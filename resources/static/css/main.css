@@ -1,0 +1,120 @@
+/* ajustes gerais do sistema */
+html{
+    /* config para que não dê pro usuário selecionar e consequentemente copiar a base de dados */
+    user-select: none;
+    -webkit-user-select: none; /* Chrome/Safari */
+    -moz-user-select: none;    /* Firefox */
+    -ms-user-select: none;     /* IE/Edge */
+    font-size: 0.8em; 
+}
+body, html {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.cabecalho {
+    display: flex;
+    align-items: center; /* Alinha verticalmente */
+    gap: 10px; /* Espaço entre os h1 (opcional) */
+    flex-direction: column; /* Coloca um em cima do outro */
+    justify-content: flex-start; /* Topo */
+    min-height: 100vh;
+    padding-top: 2%;
+}
+
+.conteudo-home{
+    display: flex;
+    align-items: center; /* Alinha verticalmente */
+    justify-content: center; /* Centraliza horizontalmente na tela */
+    gap: 40px; /* Espaço entre texto e imagem */
+    padding: 10px 0;
+    flex-wrap: wrap; /* Faz quebrar em telas menores */
+}
+
+.conteudo-home texto{
+    max-width: 500px;
+    text-align: center;
+}
+
+.conteudo-home imagem{
+    width: 250px;
+    height: auto;
+}
+
+h3 {
+    text-align: justify;
+    color: rgb(71, 71, 71);
+    font-size: large;
+}
+
+h2 {
+    text-align: justify;
+    color:rgb(71, 71, 71);
+    font-size: small;
+}
+
+.background-image {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 130vh;
+    background-image: url('/static/img/image.png');
+    background-size: cover;
+    background-position: center;
+    opacity: 0.5; /* ajuste a opacidade aqui */
+    z-index: -1; /* joga para trás do conteúdo */
+}
+
+
+
+.flex-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+/* header { 
+    background-color:rgb(255, 255, 255);
+    color: white;
+    text-align: center; 
+    padding: 5px 0;
+}*/
+
+main {
+    flex: 1 0 auto; /* Ocupa o espaço restante */
+}
+
+.footer {
+    font-family: 'Instrument Sans', sans-serif;
+    background-color: #2f453a !important; 
+    color: white;
+    padding: 100px;
+}
+
+footer ul li {
+  padding-bottom: 4px;
+}
+
+/* navbar */
+
+.item {
+    font-weight: 500;
+    color: black;   
+}
+
+/* Texto Inicial */
+
+.h5 {
+  color: rgb(153, 153, 153);
+}

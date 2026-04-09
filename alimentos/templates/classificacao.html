@@ -1,0 +1,51 @@
+{% extends 'master.html' %}
+{%load static%}
+{% block conteudo %}
+<div class='container mt-3'>
+    <h1>Classificação</h1>
+    <!-- Formulário de busca -->
+    <form method="get" class="form-group my-4 d-flex justify-content-center mx-auto">
+        <div class="col-8 col-lg-4">
+            <div class="input-group">
+                <input class="form-control" id="txtBuscaNomeClassificacao" name="query" value="{{ query }}" type="text"
+                    placeholder="Informe o nome de uma classificação..." style="border-radius: 20px 0 0 20px;">
+                <div class="input-group-append">
+                    <button type="submit" class="botao" style="border-radius: 0 20px 20px 0;"><img
+                            src="{% static 'img/search.png' %}" width="20"
+                            style=" margin-right: 3px; filter: brightness(0) invert(1)"></button>
+                </div>
+            </div>
+        </div>
+    </form>
+    <!-- Botão de inserir -->
+    <div class="form-group row mr-1 justify-content-end">
+        <button type="button" class="botao insert-btn" data-url="/inserir_classificacao/">
+            <img src="{% static 'img/add_circle.png' %}" width="20"
+                style="margin-right: 3px; filter: brightness(0) invert(1)">
+            Inserir
+        </button>
+    </div>
+    <!-- Contador de registros -->
+    <legend class="text-center small">
+        {% if page_obj.paginator.count == 0 %}
+        <p class="text-center">Nenhuma classificação encontrada.</p>
+    </legend>
+    {% elif page_obj.paginator.count == 1 %}
+    1 classificação encontrada
+    <div class="container text-center">
+        {% include 'classificacao_table.html' %}
+        {% include "paginador.html" %}
+    </div>
+    </legend>
+    {% else %}
+    {{ page_obj.paginator.count }} classificações registradas
+    <div class="container text-center">
+        {% include 'classificacao_table.html' %}
+        {% include "paginador.html" %}
+    </div>
+    </legend>
+    {% endif %}
+</div>
+<script type="module" src="{% static 'js/classificacao.js' %}"></script>
+<script>const csrf_token = '{{ csrf_token }}';</script>
+{% endblock %}

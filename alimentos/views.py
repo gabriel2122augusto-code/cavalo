@@ -1,0 +1,586 @@
+from django.shortcuts import render, get_object_or_404
+from alimentos.models import Classificacao, Alimento, Nutriente, ComposicaoAlimento
+from django.db.models import Q
+from django.http import  JsonResponse as js
+from django.core.paginator import Paginator
+from django.conf import settings
+from django.forms.models import model_to_dict
+from decimal import Decimal, InvalidOperation
+
+def safe_decimal(value):
+    try:
+        return Decimal(value)
+    except (InvalidOperation, TypeError):
+        return None 
+
+# NUTRIENTES
+def nutrientes(request):
+    query = request.GET.get('query', '')
+    nutrientes_lista = Nutriente.objects.filter(nome__icontains=query).order_by('-is_active', 'nome')
+    paginator = Paginator(nutrientes_lista, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'nutrientes.html', {
+        'nutrientes': page_obj,
+        'page_obj': page_obj,
+        'query': query
+    })
+
+def get_nutriente(request):
+    if request.method == "GET":
+        id = request.GET.get("id")
+        try:
+            nutriente = Nutriente.objects.get(id=id)
+            data = {
+                "id": nutriente.id,
+                "nome": nutriente.nome,
+            }
+            return js(data)
+        except Nutriente.DoesNotExist:
+            return js({"error": "Nutriente não encontrado"}, status=404)
+
+def busca_nutriente_nome(request):
+    nome = request.GET.get('nome', '')
+    if nome:
+        nutrientes = Nutriente.objects.filter(nome__icontains=nome)
+        if nutrientes.exists():
+            return js({'nutrientes': list(nutrientes.values())})
+        return js({'mensagem': 'Nutriente não encontrado'})
+    return js({'mensagem': 'Informe um nome para busca'}, status=400)
+
+def inserir_nutriente(request):
+    nome = request.GET.get('nome', '')
+    unidade = request.GET.get('unidade', '')
+    classificacao = request.GET.get('classificacao', '')
+    classificacao = Classificacao.objects.get(id=classificacao)
+    if nome and unidade:
+        if Nutriente.objects.filter(nome__iexact=nome).exists():
+            return js({'Mensagem': f'{nome} já existe'}, status=400)
+        Nutriente.objects.create(nome=nome, unidade=unidade, classificacao=classificacao)
+        return js({'Mensagem': f'{nome} inserido com sucesso!'}, status=200)
+    return js({'Mensagem': 'Informe nome e unidade'}, status=400)
+
+def atualizar_nutriente(request):
+    id = request.GET.get('id')
+    nome = request.GET.get('nome')
+    unidade = request.GET.get('unidade')
+    classificacao = request.GET.get('classificacao')
+    classificacao = Classificacao.objects.get(id=classificacao)
+
+    if Nutriente.objects.exclude(id=id).filter(nome__iexact=nome).exists():
+        return js({'Mensagem': "Outro nutriente já existe com esse nome!"}, status=401)
+    
+    if not id or not nome or not unidade:
+        return js({'Mensagem': 'Parâmetros incompletos'}, status=400)
+
+    nutriente = get_object_or_404(Nutriente, pk=id)
+    if (
+        nutriente.nome == nome and
+        nutriente.unidade == unidade and
+        (nutriente.classificacao or '') == (classificacao or '')
+    ):
+        return js({'Mensagem': "Nenhum dado foi alterado!"}, status=401)
+
+
+    nutriente.nome = nome
+    nutriente.unidade = unidade
+    nutriente.classificacao = classificacao or None
+    nutriente.save()
+
+    return js({'Mensagem': 'Nutriente atualizado com sucesso!'}, status=200)
+
+def ativar_nutriente(request):
+    id = request.GET.get('id')
+    nutriente = get_object_or_404(Nutriente, pk=id)
+    nutriente.is_active = True
+    nutriente.save()
+    composicao = ComposicaoAlimento.objects.filter(nutriente_id=id)
+    composicao.update(is_active = True)
+    return js({'Mensagem': f'{nutriente.nome} foi ativado'}, status=200)
+
+def desativar_nutriente(request):
+    id = request.GET.get('id')
+    if id:
+      nutriente = get_object_or_404(Nutriente, pk=id)
+      nutriente.is_active = False
+      nutriente.save()
+      composicao = ComposicaoAlimento.objects.filter(nutriente_id=id)
+      composicao.update(is_active = False)
+      return js({'Mensagem': f'{nutriente.nome} foi desativado'}, status=200)
+    return js({'Mensagem': f'Não foi possível desativar {nutriente.nome}'}, status=400)
+
+def listar_nutrientes(request):
+    query = request.GET.get('query', '').strip()
+    nutrientes = Nutriente.objects.all()
+
+    if query:
+        nutrientes = nutrientes.filter(nome__icontains=query)
+    
+    nutrientes = nutrientes.order_by('nome')
+
+    paginator = Paginator(nutrientes, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'nutrientes': page_obj.object_list,
+        'page_obj': page_obj,
+        'query': query,
+    }
+
+# CLASSIFICAÇÃO
+def classificacao(request):
+    query = request.GET.get('query', '')
+    classificacoes_lista = Classificacao.objects.filter(nome__icontains=query).exclude(nome__iexact="Não Classificado").order_by('-is_active', 'nome')
+    paginator = Paginator(classificacoes_lista, getattr(settings, 'NUMBER_GRID_PAGES', 10))
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'classificacao.html', {
+        'classificacoes': page_obj,
+        'page_obj': page_obj,
+        'query': query
+    })
+
+def get_classificacao(request):
+   return render(request, 'classificacao.html', {})
+
+def inserir_classificacao(req):
+   nome = req.GET.get('nome')
+   if nome:
+      if not Classificacao.objects.filter(nome__iexact=nome).exists():
+         Classificacao.objects.create(nome=nome)
+         return js({'Mensagem': f'{nome} inserido com sucesso!'})
+      else:
+         return js({'Mensagem': f'O nutriente "{nome}" já existe na base de dados!'}, status=401)
+   return js({'Mensagem': f'{nome} não pode ser inserido'}, status=400)
+
+def atualizar_classificacao(req):
+    id = req.GET.get('id')
+    nome = req.GET.get('nome')
+   
+    if Classificacao.objects.exclude(id=id).filter(nome__iexact=nome).exists():
+        return js({'Mensagem': "Outra classificação já existe com esse nome!"}, status=401)
+    if Classificacao.objects.filter(nome__iexact=nome).exists():
+        return js({'Mensagem': "Nome da classificação não foi alterado!"}, status=401)
+
+    if id:   
+        item = Classificacao.objects.get(id=id)
+        item.nome = nome
+        item.save()
+        return js({'Mensagem': 'Classificação atualizada com sucesso!'}, status=200)
+
+    if not id or not nome:
+        return js({'Mensagem': 'Parâmetros incompletos'}, status=400)
+
+def ativar_classificacao(req):
+   teste = req.GET.get('id')
+   if teste:
+      item = Classificacao.objects.get(id=teste)
+      item.is_active = True
+      item.save()
+   return js({'Mensagem': f'{item.nome} foi ativado'})
+
+def desativar_classificacao(req):
+   teste = req.GET.get('id')
+   if teste:
+      item = Classificacao.objects.get(id=teste)
+      item.is_active = False
+      item.save()
+   return js({'Mensagem': f'{item.nome} foi desativado'})
+
+def listar_classificacoes(request):
+    query = request.GET.get('query', '').strip()
+    classificacoes = Classificacao.objects.all()
+
+    if query:
+        classificacoes = classificacoes.filter(nome__icontains=query)
+
+    classificacoes = classificacoes.order_by('nome')
+
+    paginator = Paginator(classificacoes, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'classificacoes': page_obj, 
+        'page_obj': page_obj,
+        'query': query,
+    }
+   
+# ALIMENTOS
+def alimentos(request):
+    query = request.GET.get('query', '')
+    alimentos_lista = Alimento.objects.filter(nome__icontains=query).order_by('-is_active', 'nome')
+    paginator = Paginator(alimentos_lista, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    
+    return render(request, 'alimentos.html', {
+        'alimentos': page_obj,
+        'page_obj': page_obj,
+        'query': query
+    })
+
+def alimento_json(request):
+    id = request.GET.get('id')
+    try:
+        alimento = Alimento.objects.get(id=id)
+        alimento_dict = model_to_dict(alimento)
+        return js(alimento_dict)
+    except Alimento.DoesNotExist:
+        return js({'error': 'Alimento não encontrado'}, status=404)
+    except Exception as e:
+        return js({'error': str(e)}, status=500)
+
+def classificacoes_json(request):
+    classificacoes = list(Classificacao.objects.filter(
+        Q(is_active=True) | Q(nome='Não Classificado')
+    ).values('id', 'nome'))
+    return js(classificacoes, safe=False)
+
+def busca_alimento_nome(request):
+    nome = request.GET.get('nome', '')
+    if nome:
+        nutrientes = Nutriente.objects.filter(nome__icontains=nome)
+        if nutrientes.exists():
+            return js({'nutrientes': list(nutrientes.values())})
+        return js({'mensagem': 'Nutriente não encontrado'})
+    return js({'mensagem': 'Informe um nome para busca'}, status=400)
+
+def inserir_alimento(request):
+    if request.method == 'POST':
+        nome = request.POST.get('nome')
+        classificacao = request.POST.get('id_classificacao')
+        ms = request.POST.get('ms')
+        ed = request.POST.get('ed')
+        pb = request.POST.get('pb')
+        if Alimento.objects.filter(nome__iexact=nome).exists():
+                return js({'Mensagem': f'{nome} já existe'}, status=401)
+        if not Alimento.objects.filter(nome=nome).exists():
+            item = Classificacao.objects.get(id=classificacao)
+            Alimento.objects.create(nome=nome, classificacao=item, ms=ms, ed=ed, pb=pb) 
+            return js({'Mensagem': f'"{nome}" inserido com sucesso!'}, status=200)
+
+def atualizar_alimento(request):
+    if request.method != 'POST':
+        return js({'Mensagem': 'Método não permitido'}, status=405)
+
+    try:
+        id_alimento = int(request.POST.get('id'))
+        idClass = int(request.POST.get('idClass'))
+    except (TypeError, ValueError):
+        return js({'Mensagem': 'ID inválido'}, status=400)
+
+    nome_alimento = request.POST.get('nome')
+    ms = safe_decimal(request.POST.get('ms'))
+    ed = safe_decimal(request.POST.get('ed'))
+    pb = safe_decimal(request.POST.get('pb'))
+
+    # Validação básica
+    if not nome_alimento or ms is None or ed is None or pb is None:
+        return js({'Mensagem': 'Dados incompletos ou inválidos.'}, status=400)
+
+    try:
+        alimento = Alimento.objects.get(id=id_alimento)
+    except Alimento.DoesNotExist:
+        return js({'Mensagem': 'Alimento não encontrado.'}, status=404)
+
+    if Alimento.objects.exclude(id=id_alimento).filter(nome__iexact=nome_alimento).exists():
+        return js({'Mensagem': "Outro alimento já existe com esse nome!"}, status=409)
+
+    # Verifica o que mudou
+    nome_mudou = nome_alimento != alimento.nome
+    class_mudou = idClass != alimento.classificacao.id
+    ms_mudou = ms != alimento.ms
+    ed_mudou = ed != alimento.ed
+    pb_mudou = pb != alimento.pb
+
+    if not (nome_mudou or class_mudou or ms_mudou or ed_mudou or pb_mudou):
+        print("calan")
+        return js({'Mensagem': "Nenhum dado foi alterado!"}, status=401)
+
+    try:
+        if class_mudou:
+            alimento.classificacao = Classificacao.objects.get(id=idClass)
+    except Classificacao.DoesNotExist:
+        return js({'Mensagem': 'Classificação inválida'}, status=400)
+
+    # Atualiza os dados
+    alimento.nome = nome_alimento
+    alimento.ms = ms
+    alimento.ed = ed
+    alimento.pb = pb
+    alimento.save()
+
+    return js({'Mensagem': "Alimento atualizado com sucesso!"}, status=200)
+
+def ativar_alimento(request):
+    if request.method == 'POST':
+        id = request.POST.get('id')
+        nome = request.POST.get('nome')
+        item = Alimento.objects.get(id=id)
+        if item:
+            if item.is_active == False:
+                item.is_active = True
+                item.save()
+                return js({'Mensagem': f'"{nome}" ativado com sucesso!'}, status=200)
+            else:
+                return js({'Mensagem': 'Esse alimento ja esta ativo!'}, status=400)
+    else:
+        return js({'Mensagem': 'Alguma coisa deu errado'}, status=400)
+    
+def desativar_alimento(request):
+    if request.method == 'POST':
+        id = request.POST.get('id')
+        nome = request.POST.get('nome')
+        if id:
+            item = Alimento.objects.get(id=id)
+            if item.is_active == True:
+                item.is_active = False
+                item.save()
+                return js({'Mensagem': f'"{nome}" desativado com sucesso!'}, status=200)
+            else:
+                return js({'Mensagem': 'Esse alimento ja esta desativado!'}, status=400)
+    return js({'Mensagem': 'Alguma coisa deu errado'}, status=400)
+
+def apagar_alimento(request):
+    if request.GET.get('id'):
+        id_alimento = request.GET.get('id')
+        try:
+            alimento = Alimento.objects.get(id=id_alimento)
+            alimento.delete()
+            return js({'alimento': 'DELETADO'})
+        except Alimento.DoesNotExist:
+            return js({'alimento': 'Alimento não encontrado'})
+    return js({'alimento': 'Preciso de uma id'})
+
+#COMPOSIÇÃO DE ALIMENTO
+def composicaoAlimento(request):
+    query = request.GET.get('query', '').strip()
+    lista_composicao_alimento = ComposicaoAlimento.objects.all()
+
+    if query:
+        lista_composicao_alimento = lista_composicao_alimento.filter(
+            alimento__nome__icontains=query
+        ) | ComposicaoAlimento.objects.filter(
+            nutriente__nome__icontains=query
+        )
+
+    lista_composicao_alimento = lista_composicao_alimento.order_by('-alimento__is_active', 'alimento__nome')
+
+    paginator = Paginator(lista_composicao_alimento, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'composicao_alimento.html', {
+        'composicao_alimento': page_obj,
+        'page_obj': page_obj,
+        'query': query
+    })
+
+def composicao_json(request):
+    id = request.GET.get('id')
+    alimento_obj = Alimento.objects.get(id=id)
+    alimento_nome = alimento_obj.nome
+    composicao = ComposicaoAlimento.objects.filter(alimento_id=id).order_by('nutriente__nome').select_related('nutriente')
+    composicao_dict = [
+        {
+            'id': comp.id,
+            'is_active': comp.is_active,
+            'alimento_id': comp.alimento_id,
+            'nutriente_id': comp.nutriente.id,
+            'nutriente_nome': comp.nutriente.nome,
+            'nutriente_unidade': comp.nutriente.unidade,
+            'valor': str(comp.valor)
+        }
+        for comp in composicao
+    ]
+    data = {
+        'alimento': {'id': id,'nome': alimento_nome},
+        'composicao': composicao_dict,
+    }
+    return js(data)
+
+def nutrientes_disponiveis_json(request):
+    id = request.GET.get('id_composicao')
+    nutrientes_relacionados = ComposicaoAlimento.objects.filter(
+        alimento_id=id
+    ).values_list('nutriente_id', flat=True)
+    # Filtra os nutrientes que NÃO estão nessa lista
+    nutrientes_disponiveis = Nutriente.objects.exclude(id__in=nutrientes_relacionados).filter(is_active=True)
+    return js({'response': list(nutrientes_disponiveis.values('id', 'nome'))})
+
+def get_composicaoAlimento(request):
+    if request.method == "GET":
+        id = request.GET.get("id")
+        try:
+            composicao = ComposicaoAlimento.objects.get(id=id)
+            data = {
+                 "id": composicao.id,
+                 "alimento_id": composicao.alimento.id,
+                 "nutriente_id": composicao.nutriente.id,
+                 "alimento": composicao.alimento.nome,
+                 "nutriente_nome": composicao.nutriente.nome,
+                 "valor": composicao.valor,
+            }
+            return js(data)
+        except ComposicaoAlimento.DoesNotExist:
+            return js({"error": "Composição de alimento não encontrada"}, status=404)
+
+def busca_composicaoAlimento_nome(request):
+    nome = request.GET.get('nome', '')
+    if nome:
+        composicoes = ComposicaoAlimento.objects.filter(alimento__nome__icontains=nome)
+        if composicoes.exists():
+            return js({'composicoes': list(composicoes.values())})
+        return js({'mensagem': 'Composição de alimento não encontrada'})
+    return js({'mensagem': 'Informe um nome para busca'}, status=400)
+
+def inserir_composicao_alimento(request):
+    alimento_id = request.POST.get('id_alimento', '')
+    nutriente_id = request.POST.get('id_nutriente', '')
+    valor = request.POST.get('quantidade', '')
+    print(alimento_id, nutriente_id, valor)
+    if alimento_id and nutriente_id and valor:
+        # nutriente = Nutrientes.objects.filter(pk=nutriente_id|Q(is_active=True))
+        # if nutriente():
+        if ComposicaoAlimento.objects.filter(alimento_id=alimento_id, nutriente_id=nutriente_id).exists():
+            return js({'Mensagem': 'Composição de alimento já existe!'}, status=400)
+
+        ComposicaoAlimento.objects.create(
+            alimento_id=alimento_id,
+            nutriente_id=nutriente_id,
+            valor=valor
+        )
+        alimento_obj = Alimento.objects.get(id=alimento_id)
+        composicao = ComposicaoAlimento.objects.filter(alimento_id=alimento_id, nutriente__is_active=True).order_by('-id').select_related('nutriente')
+        composicao_dict = [
+            {
+                'id': comp.id,
+                'is_active': comp.is_active,
+                'alimento_id': comp.alimento_id,
+                'nutriente_id': comp.nutriente.id,
+                'nutriente_nome': comp.nutriente.nome,
+                'nutriente_unidade': comp.nutriente.unidade,
+                'valor': str(comp.valor)
+            }
+            for comp in composicao
+        ]
+        data = {
+            'alimento': {'id': alimento_id,'nome': alimento_obj.nome},
+            'composicao': composicao_dict,
+        }
+        return js({'Mensagem': 'Nutriente inserido na composição com sucesso!', 'data': data}, status=201)
+
+    return js({'Mensagem': 'Informe alimento, nutriente e valor'}, status=400)
+
+def atualizar_composicaoAlimento(request):
+    id = request.POST.get('id')
+    alimento_id = request.POST.get('alimento_id')
+    nutriente_id = request.POST.get('nutriente_id')
+    valor = request.POST.get('valor')
+
+    if not id or not alimento_id or not nutriente_id or not valor:
+        return js({'Mensagem': 'Parâmetros incompletos'}, status=400)
+
+    composicao = get_object_or_404(ComposicaoAlimento, pk=id)
+
+    if (str(composicao.alimento_id) == str(alimento_id) and
+        str(composicao.nutriente_id) == str(nutriente_id) and
+        str(composicao.valor) == str(valor)):
+        return js({'Mensagem': 'Nenhuma alteração detectada.'}, status=400)
+
+    if ComposicaoAlimento.objects.filter(
+        alimento_id=alimento_id,
+        nutriente_id=nutriente_id
+    ).exclude(id=id).exists():
+        return js({'Mensagem': 'Composição de alimento já existe!'}, status=400)
+
+    composicao.alimento_id = alimento_id
+    composicao.nutriente_id = nutriente_id
+    composicao.valor = valor
+    composicao.save()
+    return js({'Mensagem': 'Composição de alimento atualizada com sucesso!'}, status=200)
+
+def ativar_composicaoAlimento(request):
+    id = request.POST.get('id')
+    if id:
+        try:
+            composicao = ComposicaoAlimento.objects.get(id=id)
+            composicao.is_active = True
+            composicao.save()
+            alimento_obj = Alimento.objects.get(id=composicao.alimento.id)
+            composicao = ComposicaoAlimento.objects.filter(alimento_id=composicao.alimento.id).order_by('nutriente__nome').select_related('nutriente')
+            composicao_dict = [
+                {
+                    'id': comp.id,
+                    'is_active': comp.is_active,
+                    'alimento_id': comp.alimento_id,
+                    'nutriente_id': comp.nutriente.id,
+                    'nutriente_nome': comp.nutriente.nome,
+                    'nutriente_unidade': comp.nutriente.unidade,
+                    'valor': str(comp.valor)
+                }
+                for comp in composicao
+            ]
+            data = {
+                'alimento': {'id': alimento_obj.id,'nome': alimento_obj.nome},
+                'composicao': composicao_dict,
+            }
+            return js({'Mensagem': 'Composição de alimento foi ativada', 'data': data}, status=202)
+        except ComposicaoAlimento.DoesNotExist:
+            return js({'Mensagem': 'Composição não encontrada'}, status=404)
+    return js({'Mensagem': 'Parâmetro "id" ausente'}, status=400)
+
+
+def desativar_composicaoAlimento(request):
+    id = request.POST.get('id')
+    if id:
+        try:
+            composicao = ComposicaoAlimento.objects.get(id=id)
+            composicao.is_active = False
+            composicao.save()
+            alimento_obj = Alimento.objects.get(id=composicao.alimento.id)
+            composicao = ComposicaoAlimento.objects.filter(alimento_id=composicao.alimento.id).order_by('nutriente__nome').select_related('nutriente')
+            composicao_dict = [
+                {
+                    'id': comp.id,
+                    'is_active': comp.is_active,
+                    'alimento_id': comp.alimento_id,
+                    'nutriente_id': comp.nutriente.id,
+                    'nutriente_nome': comp.nutriente.nome,
+                    'nutriente_unidade': comp.nutriente.unidade,
+                    'valor': str(comp.valor)
+                }
+                for comp in composicao
+            ]
+            data = {
+                'alimento': {'id': alimento_obj.id,'nome': alimento_obj.nome},
+                'composicao': composicao_dict,
+            }
+            return js({'Mensagem': 'Composição de alimento foi desativada', 'data': data}, status=202)
+        except ComposicaoAlimento.DoesNotExist:
+            return js({'Mensagem': 'Composição não encontrada'}, status=404)
+    return js({'Mensagem': 'Parâmetro "id" ausente'}, status=400)
+
+def listar_composicaoAlimento(request):
+    query = request.GET.get('query', '').strip()
+    composicoes = ComposicaoAlimento.objects.all()
+
+    if query:
+        composicoes = composicoes.filter(alimento__nome__icontains=query)
+
+    composicoes = composicoes.order_by('alimento__nome')
+
+    paginator = Paginator(composicoes, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'composicoes': page_obj.object_list,
+        'page_obj': page_obj,
+        'query': query,
+    }
+
+def listar_alimentos_nutrientes(request):
+    alimentos = list(Alimento.objects.filter(is_active=True).values('id', 'nome'))
+    nutrientes = list(Nutriente.objects.all().values('id', 'nome'))
+    return js({'alimentos': alimentos, 'nutrientes': nutrientes})
