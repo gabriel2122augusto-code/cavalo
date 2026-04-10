@@ -33,7 +33,7 @@ class Command(BaseCommand):
             nrows=34
         )
 
-        classificacao_padrao = Classificacao.objects.create(nome="Não Classificado", is_active=False)
+        classificacao_padrao = Classificacao.objects.get_or_create(nome="Não Classificado", is_active=False)[0]
         contador_classificacao = 1 # contador de classificacoes
         # Percorrendo o dataframe dados_excel1
         for i, nutriente in enumerate(dados_excel1.iloc[:,0].dropna()):
